@@ -24,7 +24,7 @@
 
   margin-left: 20em;
   margin-top: 1%;
-  width: 30vh;
+  width: 33vh;
   height: 30vh;
 }
 
@@ -32,14 +32,14 @@
   margin-left: 20em;
   margin-top: 20vh;
   /* Aumentamos a margem superior para posicionar abaixo da img1 */
-  width: 30vh;
+  width: 33vh;
   height: 30vh;
 }
 
 #img3 {
   margin-right: 20em;
   margin-top: 1%;
-  width: 30vh;
+  width: 33vh;
   height: 30vh;
 }
 
@@ -47,7 +47,7 @@
   text-align: right;
   color: black;
   position: absolute;
-  left: 24%;
+  left: 17%;
   padding: 2vh;
   margin-top: 30vh;
   font-size: 3vh;
@@ -63,7 +63,7 @@
   text-align: right;
   color: black;
   position: absolute;
-  left: 22%;
+  left: 17%;
   padding: 2vh;
   margin-top: 80vh;
   font-size: 3vh;
@@ -79,7 +79,7 @@
   text-align: left;
   color: black;
   position: absolute;
-  right: 24%;
+  right: 17%;
   padding: 2vh;
   margin-top: 30vh;
   font-size: 3vh;
