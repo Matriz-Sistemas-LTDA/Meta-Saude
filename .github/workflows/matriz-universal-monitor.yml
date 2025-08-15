@@ -1,0 +1,282 @@
+name: '🚀 MATRIZ UNIVERSAL - Monitor de Impacto'
+
+# ⚡ ESTE WORKFLOW PODE SER COPIADO PARA QUALQUER REPOSITÓRIO!
+# Ele detecta automaticamente o tipo de projeto e aplica as regras corretas
+
+on:
+  push:
+    branches: [ main, master, develop, release/* ]
+  pull_request:
+    branches: [ main, master, develop ]
+
+env:
+  SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+  TEAMS_WEBHOOK: ${{ secrets.TEAMS_WEBHOOK }}
+
+jobs:
+  detect-project-type:
+    runs-on: ubuntu-latest
+    name: '🔍 Detectar Tipo de Projeto'
+    outputs:
+      project-type: ${{ steps.detection.outputs.project-type }}
+      project-name: ${{ steps.detection.outputs.project-name }}
+      impact-level: ${{ steps.detection.outputs.impact-level }}
+      
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: '🎯 Detectar tipo de projeto'
+      id: detection
+      run: |
+        echo "🔍 ANALISANDO ESTRUTURA DO PROJETO..."
+        
+        PROJECT_TYPE="unknown"
+        PROJECT_NAME="Unknown Project"
+        IMPACT_LEVEL="BAIXO"
+        
+        # DETECTAR PROJETO DELPHI/PASCAL
+        if find . -name "*.pas" -o -name "*.dpr" -o -name "*.dproj" | grep -q .; then
+          PROJECT_TYPE="delphi"
+          echo "🎯 PROJETO DELPHI DETECTADO"
+          
+          # Verificar se é servidor crítico
+          if find . -name "*Server*.pas" -o -name "*Horse*.pas" | grep -q .; then
+            IMPACT_LEVEL="CRITICO"
+            PROJECT_NAME="Servidor Delphi (APIs Críticas)"
+          else
+            IMPACT_LEVEL="ALTO"
+            PROJECT_NAME="Aplicação Delphi"
+          fi
+        fi
+        
+        # DETECTAR PROJETO FLUTTER
+        if [ -f "pubspec.yaml" ] && grep -q "flutter" pubspec.yaml; then
+          PROJECT_TYPE="flutter"
+          PROJECT_NAME="Aplicativo Flutter"
+          IMPACT_LEVEL="CRITICO"
+          echo "📱 PROJETO FLUTTER DETECTADO"
+        fi
+        
+        # DETECTAR PROJETO WEB/NODE
+        if [ -f "package.json" ]; then
+          PROJECT_TYPE="web"
+          PROJECT_NAME="Projeto Web/Node.js"
+          IMPACT_LEVEL="ALTO"
+          echo "🌐 PROJETO WEB DETECTADO"
+        fi
+        
+        # DETECTAR PROJETO PYTHON
+        if [ -f "requirements.txt" ] || [ -f "pyproject.toml" ] || find . -name "*.py" | grep -q .; then
+          PROJECT_TYPE="python"
+          PROJECT_NAME="Projeto Python"
+          IMPACT_LEVEL="MEDIO"
+          echo "🐍 PROJETO PYTHON DETECTADO"
+        fi
+        
+        # DETECTAR BANCO DE DADOS
+        if find . -name "*.sql" | grep -q .; then
+          if [ "$PROJECT_TYPE" == "unknown" ]; then
+            PROJECT_TYPE="database"
+            PROJECT_NAME="Scripts de Banco"
+            IMPACT_LEVEL="CRITICO"
+          else
+            IMPACT_LEVEL="CRITICO"  # Qualquer projeto com SQL é crítico
+          fi
+          echo "💾 SCRIPTS SQL DETECTADOS - ELEVANDO CRITICIDADE"
+        fi
+        
+        echo "project-type=$PROJECT_TYPE" >> $GITHUB_OUTPUT
+        echo "project-name=$PROJECT_NAME" >> $GITHUB_OUTPUT
+        echo "impact-level=$IMPACT_LEVEL" >> $GITHUB_OUTPUT
+        
+        echo "📊 RESULTADO DA DETECÇÃO:"
+        echo "Tipo: $PROJECT_TYPE"
+        echo "Nome: $PROJECT_NAME"
+        echo "Nível de Impacto: $IMPACT_LEVEL"
+
+  analyze-delphi-project:
+    needs: detect-project-type
+    if: needs.detect-project-type.outputs.project-type == 'delphi'
+    runs-on: ubuntu-latest
+    name: '🔧 Analisar Projeto Delphi'
+    
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 2
+        
+    - name: '📁 Buscar arquivos Delphi alterados'
+      id: changed-files
+      uses: tj-actions/changed-files@v39
+      with:
+        files: |
+          **/*.pas
+          **/*.dpr
+          **/*.dproj
+          **/*.dfm
+    
+    - name: '⚡ Análise de Impacto Delphi'
+      id: impact-analysis
+      run: |
+        echo "🔧 ANALISANDO PROJETO DELPHI..."
+        
+        CRITICAL_IMPACT=""
+        HIGH_IMPACT=""
+        MEDIUM_IMPACT=""
+        
+        for file in ${{ steps.changed-files.outputs.all_changed_files }}; do
+          echo "📁 Analisando: $file"
+          
+          # IMPACTO CRÍTICO
+          if [[ "$file" == *"Server"* ]] || \
+             [[ "$file" == *"Horse"* ]] || \
+             [[ "$file" == *"Controller"* ]] || \
+             [[ "$file" == *"DAO"* ]] || \
+             [[ "$file" == *"DataSnap"* ]] || \
+             [[ "$file" == *"Connection"* ]]; then
+            CRITICAL_IMPACT="$CRITICAL_IMPACT\n🚨 $file"
+          
+          # IMPACTO ALTO
+          elif [[ "$file" == *"Service"* ]] || \
+               [[ "$file" == *"Manager"* ]] || \
+               [[ "$file" == *"Handler"* ]]; then
+            HIGH_IMPACT="$HIGH_IMPACT\n⚠️ $file"
+          
+          # IMPACTO MÉDIO
+          elif [[ "$file" == *"Utils"* ]] || \
+               [[ "$file" == *"Helper"* ]] || \
+               [[ "$file" == *"Format"* ]]; then
+            MEDIUM_IMPACT="$MEDIUM_IMPACT\n📝 $file"
+          fi
+        done
+        
+        echo "critical_impact<<EOF" >> $GITHUB_OUTPUT
+        echo -e "$CRITICAL_IMPACT" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+        
+        echo "high_impact<<EOF" >> $GITHUB_OUTPUT
+        echo -e "$HIGH_IMPACT" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+        
+        # Determinar nível geral
+        if [ ! -z "$CRITICAL_IMPACT" ]; then
+          echo "impact_level=CRITICO" >> $GITHUB_OUTPUT
+        elif [ ! -z "$HIGH_IMPACT" ]; then
+          echo "impact_level=ALTO" >> $GITHUB_OUTPUT
+        else
+          echo "impact_level=MEDIO" >> $GITHUB_OUTPUT
+        fi
+    
+    - name: '🚨 IMPACTO CRÍTICO DETECTADO'
+      if: steps.impact-analysis.outputs.impact_level == 'CRITICO'
+      run: |
+        echo "🔥 ATENÇÃO: MUDANÇAS CRÍTICAS EM PROJETO DELPHI!"
+        echo ""
+        echo "⚡ COMPONENTES CRÍTICOS ALTERADOS:"
+        echo -e "${{ steps.impact-analysis.outputs.critical_impact }}"
+        echo ""
+        echo "🎯 POSSÍVEIS IMPACTOS:"
+        echo "• 🖥️ Servidores podem parar de funcionar"
+        echo "• 📱 Apps podem perder conexão"
+        echo "• 💾 Acesso ao banco pode ser comprometido"
+        echo "• 🔄 APIs podem retornar erros"
+        echo ""
+        echo "⚡ AÇÕES OBRIGATÓRIAS:"
+        echo "1. 🧪 TESTAR todas as funcionalidades"
+        echo "2. 🔄 VALIDAR conexões com banco"
+        echo "3. 📱 TESTAR apps que dependem das APIs"
+        echo "4. 🚀 DEPLOY gradual recomendado"
+        
+        exit 1  # Bloquear merge
+
+  analyze-flutter-project:
+    needs: detect-project-type
+    if: needs.detect-project-type.outputs.project-type == 'flutter'
+    runs-on: ubuntu-latest
+    name: '📱 Analisar Projeto Flutter'
+    
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 2
+        
+    - name: '📁 Buscar arquivos Flutter alterados'
+      id: changed-files
+      uses: tj-actions/changed-files@v39
+      with:
+        files: |
+          **/*.dart
+          pubspec.yaml
+          android/**
+          ios/**
+    
+    - name: '📱 Análise de Impacto Flutter'
+      run: |
+        echo "📱 ANALISANDO PROJETO FLUTTER..."
+        
+        CRITICAL_FILES=""
+        
+        for file in ${{ steps.changed-files.outputs.all_changed_files }}; do
+          if [[ "$file" == *"_service.dart"* ]] || \
+             [[ "$file" == *"api_service"* ]] || \
+             [[ "$file" == *"database_service"* ]] || \
+             [[ "$file" == "pubspec.yaml" ]]; then
+            CRITICAL_FILES="$CRITICAL_FILES\n🚨 $file"
+          fi
+        done
+        
+        if [ ! -z "$CRITICAL_FILES" ]; then
+          echo "🚨 MUDANÇAS CRÍTICAS NO APP FLUTTER!"
+          echo -e "$CRITICAL_FILES"
+          echo "📱 TESTE O APP COMPLETAMENTE ANTES DO DEPLOY!"
+          exit 1
+        fi
+
+  analyze-web-project:
+    needs: detect-project-type
+    if: needs.detect-project-type.outputs.project-type == 'web'
+    runs-on: ubuntu-latest
+    name: '🌐 Analisar Projeto Web'
+    
+    steps:
+    - uses: actions/checkout@v3
+    - name: '🌐 Análise Web'
+      run: |
+        echo "🌐 PROJETO WEB DETECTADO - ANÁLISE BÁSICA"
+        echo "📝 Implementar regras específicas conforme necessário"
+
+  notify-results:
+    needs: [detect-project-type, analyze-delphi-project, analyze-flutter-project, analyze-web-project]
+    if: always()
+    runs-on: ubuntu-latest
+    name: '📢 Notificar Resultados'
+    
+    steps:
+    - name: '📊 Resumo Final'
+      run: |
+        echo "📊 RESUMO DA ANÁLISE UNIVERSAL:"
+        echo "🔗 Repositório: ${{ github.repository }}"
+        echo "🎯 Tipo de Projeto: ${{ needs.detect-project-type.outputs.project-type }}"
+        echo "📝 Nome: ${{ needs.detect-project-type.outputs.project-name }}"
+        echo "📈 Nível de Impacto: ${{ needs.detect-project-type.outputs.impact-level }}"
+        echo "🌿 Branch: ${{ github.ref_name }}"
+        echo "👤 Autor: ${{ github.actor }}"
+        echo ""
+        echo "🎯 PRÓXIMOS PASSOS:"
+        if [ "${{ needs.detect-project-type.outputs.impact-level }}" == "CRITICO" ]; then
+          echo "1. ⚠️ REVISAR mudanças críticas"
+          echo "2. 🧪 TESTAR completamente"
+          echo "3. 🚀 DEPLOY gradual"
+        else
+          echo "1. ✅ Mudanças com impacto controlado"
+          echo "2. 🧪 Teste básico recomendado"
+        fi
+    
+    - name: '📨 Notificar Slack'
+      if: env.SLACK_WEBHOOK != ''
+      run: |
+        curl -X POST "${{ env.SLACK_WEBHOOK }}" \
+        -H 'Content-type: application/json' \
+        --data "{
+          \"text\": \"🚀 *Análise Concluída*\n📁 Repo: ${{ github.repository }}\n🎯 Tipo: ${{ needs.detect-project-type.outputs.project-name }}\n📈 Impacto: ${{ needs.detect-project-type.outputs.impact-level }}\n👤 Autor: ${{ github.actor }}\"
+        }"
